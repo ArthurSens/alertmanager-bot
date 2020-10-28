@@ -11,8 +11,6 @@ require (
 	github.com/circonus-labs/circonusllhist v0.0.0-20170525201649-6e85b9352cf0 // indirect
 	github.com/docker/libkv v0.2.1
 	github.com/go-kit/kit v0.8.0
-	github.com/golang/protobuf v1.3.2 // indirect
-	github.com/google/go-cmp v0.3.1 // indirect
 	github.com/hako/durafmt v0.0.0-20160831152008-ea3ab126a649
 	github.com/hashicorp/consul v1.4.5 // indirect
 	github.com/hashicorp/go-cleanhttp v0.0.0-20170211013415-3573b8b52aa7 // indirect
@@ -47,15 +45,16 @@ require (
 	github.com/prometheus/procfs v0.0.3 // indirect
 	github.com/satori/go.uuid v1.1.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
-	github.com/stretchr/testify v1.3.0
+	github.com/stretchr/testify v1.6.1
 	github.com/tucnak/telebot v0.0.0-20170912115553-00cebf376d79
 	github.com/weaveworks/mesh v0.0.0-20160126163632-f74318fb713b // indirect
-	golang.org/x/net v0.0.0-20181213202711-891ebc4b82d6 // indirect
-	golang.org/x/text v0.3.2 // indirect
-	google.golang.org/appengine v1.1.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.13.0
+	go.opentelemetry.io/otel v0.13.0
+	go.opentelemetry.io/otel/exporters/stdout v0.13.0
+	go.opentelemetry.io/otel/exporters/trace/jaeger v0.13.0
+	go.opentelemetry.io/otel/sdk v0.13.0
 	gopkg.in/airbrake/gobrake.v2 v2.0.9 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
-	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/gemnasium/logrus-airbrake-hook.v2 v2.1.2 // indirect
 	gopkg.in/vmihailenco/msgpack.v2 v2.9.1 // indirect
 	gopkg.in/yaml.v2 v2.2.2 // indirect

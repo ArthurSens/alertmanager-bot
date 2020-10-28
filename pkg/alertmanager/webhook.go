@@ -8,11 +8,16 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/api/trace"
 )
 
 // HandleWebhook returns a HandlerFunc that forwards webhooks to all bots via a channel
 func HandleWebhook(logger log.Logger, counter prometheus.Counter, webhooks chan<- notify.WebhookMessage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		span := trace.SpanFromContext(ctx)
+		span.AddEvent(ctx, "Handling alertmanager webhook")
+
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -31,6 +36,7 @@ func HandleWebhook(logger log.Logger, counter prometheus.Counter, webhooks chan<
 			level.Warn(logger).Log(
 				"msg", "failed to decode webhook message",
 				"err", err,
+				"traceID", span.SpanContext().TraceID,
 			)
 			w.WriteHeader(http.StatusBadRequest)
 			return
@@ -39,6 +45,7 @@ func HandleWebhook(logger log.Logger, counter prometheus.Counter, webhooks chan<
 		level.Debug(logger).Log(
 			"msg", "received webhook",
 			"alerts", len(webhook.Alerts),
+			"traceID", span.SpanContext().TraceID,
 		)
 
 		webhooks <- webhook

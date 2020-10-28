@@ -26,6 +26,17 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gopkg.in/alecthomas/kingpin.v2"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/api/global"
+	"go.opentelemetry.io/otel/api/trace"
+	"go.opentelemetry.io/otel/exporters/trace/jaeger"
+	"go.opentelemetry.io/otel/propagators"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/semconv"
 )
 
 const (
@@ -52,6 +63,7 @@ var (
 )
 
 func main() {
+
 	godotenv.Load()
 
 	config := struct {
@@ -65,6 +77,7 @@ func main() {
 		telegramAdmins []int
 		telegramToken  string
 		templatesPaths []string
+		jaegerEndpoint string
 	}{}
 
 	a := kingpin.New("alertmanager-bot", "Bot for Prometheus' Alertmanager")
@@ -119,6 +132,11 @@ func main() {
 		Default("/templates/default.tmpl").
 		ExistingFilesVar(&config.templatesPaths)
 
+	a.Flag("jaeger.endpoint", "The endpoint to send traces to").
+		Envar("JAEGER_ENDPOINT").
+		Default("localhost:14268").
+		StringVar(&config.jaegerEndpoint)
+
 	_, err := a.Parse(os.Args[1:])
 	if err != nil {
 		fmt.Printf("error parsing commandline arguments: %v\n", err)
@@ -143,6 +161,8 @@ func main() {
 		"ts", log.DefaultTimestampUTC,
 		"caller", log.DefaultCaller,
 	)
+
+	initTracer(logger, config.jaegerEndpoint)
 
 	var tmpl *template.Template
 	{
@@ -234,11 +254,6 @@ func main() {
 	{
 		wlogger := log.With(logger, "component", "webserver")
 
-		// TODO: Use Heptio's healthcheck library
-		handleHealth := func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}
-
 		webhooksCounter := prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: "alertmanagerbot",
 			Name:      "webhooks_total",
@@ -248,10 +263,10 @@ func main() {
 		prometheus.MustRegister(webhooksCounter)
 
 		m := http.NewServeMux()
-		m.HandleFunc("/", alertmanager.HandleWebhook(wlogger, webhooksCounter, webhooks))
+		m.Handle("/", otelhttp.NewHandler(alertmanager.HandleWebhook(wlogger, webhooksCounter, webhooks), "alertmanager webhook"))
 		m.Handle("/metrics", promhttp.Handler())
-		m.HandleFunc("/health", handleHealth)
-		m.HandleFunc("/healthz", handleHealth)
+		m.Handle("/health", otelhttp.NewHandler(handleHealth(wlogger), "health"))
+		m.Handle("/healthz", otelhttp.NewHandler(handleHealth(wlogger), "health"))
 
 		s := http.Server{
 			Addr:    config.listenAddr,
@@ -281,5 +296,40 @@ func main() {
 	if err := g.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+func initTracer(logger log.Logger, jaegerEndpoint string) {
+	// Create jaeger exporter to be able to retrieve the collected spans.
+	exporter, err := jaeger.NewRawExporter(jaeger.WithAgentEndpoint(jaegerEndpoint))
+	if err != nil {
+		level.Error(logger).Log("msg", "error creating jaeger exporter", "err", err)
+	}
+
+	// AlwaysSample() thanks to Tempo backend :)
+	tp := sdktrace.NewTracerProvider(sdktrace.WithConfig(sdktrace.Config{DefaultSampler: sdktrace.AlwaysSample()}),
+		sdktrace.WithSyncer(exporter),
+		sdktrace.WithResource(resource.New(semconv.ServiceNameKey.String("ExampleService"))))
+	if err != nil {
+		level.Error(logger).Log("msg", "error creating tracer provider", "err", err)
+	}
+	global.SetTracerProvider(tp)
+	global.SetTextMapPropagator(otel.NewCompositeTextMapPropagator(propagators.TraceContext{}, propagators.Baggage{}))
+}
+
+// TODO: Use Heptio's healthcheck library
+func handleHealth(logger log.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		span := trace.SpanFromContext(ctx)
+		// span.AddEvent(ctx, "Handling health webhook")
+
+		level.Info(logger).Log(
+			"msg", "health OK",
+			"traceID", span.SpanContext().TraceID,
+		)
+
+		w.WriteHeader(http.StatusOK)
+
 	}
 }

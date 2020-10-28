@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tucnak/telebot"
+	"go.opentelemetry.io/otel/api/trace"
 )
 
 const (
@@ -174,6 +175,7 @@ func (b *Bot) isAdminID(id int) bool {
 
 // Run the telegram and listen to messages send to the telegram
 func (b *Bot) Run(ctx context.Context, webhooks <-chan notify.WebhookMessage) error {
+
 	commandSuffix := fmt.Sprintf("@%s", b.telegram.Identity.Username)
 
 	commands := map[string]func(message telebot.Message){
@@ -267,6 +269,8 @@ func (b *Bot) Run(ctx context.Context, webhooks <-chan notify.WebhookMessage) er
 
 // sendWebhook sends messages received via webhook to all subscribed chats
 func (b *Bot) sendWebhook(ctx context.Context, webhooks <-chan notify.WebhookMessage) error {
+	span := trace.SpanFromContext(ctx)
+	span.AddEvent(ctx, "Handling bot command")
 	for {
 		select {
 		case <-ctx.Done():
@@ -274,7 +278,11 @@ func (b *Bot) sendWebhook(ctx context.Context, webhooks <-chan notify.WebhookMes
 		case w := <-webhooks:
 			chats, err := b.chats.List()
 			if err != nil {
-				level.Error(b.logger).Log("msg", "failed to get chat list from store", "err", err)
+				level.Error(b.logger).Log(
+					"msg", "failed to get chat list from store",
+					"err", err,
+					"traceID", span.SpanContext().TraceID,
+				)
 				continue
 			}
 
@@ -290,14 +298,22 @@ func (b *Bot) sendWebhook(ctx context.Context, webhooks <-chan notify.WebhookMes
 
 			out, err := b.templates.ExecuteHTMLString(`{{ template "telegram.default" . }}`, data)
 			if err != nil {
-				level.Warn(b.logger).Log("msg", "failed to template alerts", "err", err)
+				level.Warn(b.logger).Log(
+					"msg", "failed to template alerts",
+					"err", err,
+					"traceID", span.SpanContext().TraceID,
+				)
 				continue
 			}
 
 			for _, chat := range chats {
 				err = b.telegram.SendMessage(chat, b.truncateMessage(out), &telebot.SendOptions{ParseMode: telebot.ModeHTML})
 				if err != nil {
-					level.Warn(b.logger).Log("msg", "failed to send message to subscribed chat", "err", err)
+					level.Warn(b.logger).Log(
+						"msg", "failed to send message to subscribed chat",
+						"err", err,
+						"traceID", span.SpanContext().TraceID,
+					)
 				}
 			}
 		}

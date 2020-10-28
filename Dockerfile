@@ -1,6 +1,6 @@
-FROM alpine:latest
+FROM ubuntu:latest
 ENV TEMPLATE_PATHS=/templates/default.tmpl
-RUN apk add --update ca-certificates
+RUN apt update -y && apt install -y ca-certificates
 
 COPY ./default.tmpl /templates/default.tmpl
 COPY ./alertmanager-bot /usr/bin/alertmanager-bot
